@@ -1,0 +1,90 @@
+from flask import Flask, request, jsonify
+import random
+import requests
+
+app = Flask(__name__)
+
+# Base de conhecimento do chatbot
+faq = {
+    "frete": "O frete pode variar conforme a sua localização. Consulte no checkout.",
+    "pagamento": "Aceitamos cartão de crédito, boleto e Pix.",
+    "troca": "Você pode solicitar a troca em até 7 dias após o recebimento."
+}
+
+funil_vendas = {
+    "descoberta": "Você está procurando por um produto específico? Podemos te ajudar!",
+    "consideracao": "Temos diversas opções com ofertas exclusivas. Confira em nosso site!",
+    "decisao": "Compre agora e aproveite nosso desconto especial!"
+}
+
+# Integração com e-mail marketing
+MAILCHIMP_API_KEY = "sua_chave_api"
+MAILCHIMP_LIST_ID = "seu_id_lista"
+MAILCHIMP_URL = f"https://usX.api.mailchimp.com/3.0/lists/{MAILCHIMP_LIST_ID}/members"
+
+def adicionar_email_lista(email):
+    data = {"email_address": email, "status": "subscribed"}
+    headers = {"Authorization": "apikey " + MAILCHIMP_API_KEY}
+    requests.post(MAILCHIMP_URL, json=data, headers=headers)
+
+# Integração com WhatsApp
+WHATSAPP_API_URL = "https://api.whatsapp.com/send"
+WHATSAPP_NUMBER = "seu_numero_whatsapp"
+
+def enviar_mensagem_whatsapp(numero, mensagem):
+    url = f"{WHATSAPP_API_URL}?phone={numero}&text={mensagem}"
+    return url
+
+# Integração com Telegram
+TELEGRAM_BOT_TOKEN = "seu_token_bot"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+def enviar_mensagem_telegram(chat_id, mensagem):
+    data = {"chat_id": chat_id, "text": mensagem}
+    requests.post(TELEGRAM_API_URL, json=data)
+
+@app.route('/bot', methods=['POST'])
+def chatbot():
+    data = request.json
+    mensagem = data.get("mensagem", "").lower()
+    email = data.get("email", "")
+    numero_whatsapp = data.get("whatsapp", "")
+    chat_id_telegram = data.get("telegram", "")
+    
+    # Verifica perguntas frequentes
+    for key in faq:
+        if key in mensagem:
+            return jsonify({"resposta": faq[key]})
+    
+    # Implementa funil de vendas
+    if "quero saber mais" in mensagem:
+        return jsonify({"resposta": funil_vendas["descoberta"]})
+    elif "como funciona" in mensagem:
+        return jsonify({"resposta": funil_vendas["consideracao"]})
+    elif "onde comprar" in mensagem:
+        return jsonify({"resposta": funil_vendas["decisao"]})
+    
+    # Adicionar e-mail do usuário à lista de e-mail marketing
+    if email:
+        adicionar_email_lista(email)
+        return jsonify({"resposta": "Seu e-mail foi cadastrado para receber novidades e promoções!"})
+    
+    # Enviar notificação via WhatsApp
+    if numero_whatsapp:
+        link_whatsapp = enviar_mensagem_whatsapp(numero_whatsapp, "Obrigado pelo interesse! Clique no link para mais informações sobre nossos produtos.")
+        return jsonify({"resposta": f"Clique aqui para receber mais informações pelo WhatsApp: {link_whatsapp}"})
+    
+    # Enviar notificação via Telegram
+    if chat_id_telegram:
+        enviar_mensagem_telegram(chat_id_telegram, "Obrigado pelo interesse! Aqui estão mais informações sobre nossos produtos.")
+        return jsonify({"resposta": "Mensagem enviada pelo Telegram!"})
+    
+    # Se não entender a mensagem
+    respostas_padrao = [
+        "Desculpe, não entendi. Você pode perguntar sobre frete, pagamento ou troca!",
+        "Estou aqui para ajudar! Pergunte sobre nossos produtos e ofertas."
+    ]
+    return jsonify({"resposta": random.choice(respostas_padrao)})
+
+if __name__ == '__main__':
+    app.run(debug=True)
